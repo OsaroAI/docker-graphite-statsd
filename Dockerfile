@@ -12,8 +12,6 @@ RUN true \
       logrotate \
       memcached \
       nginx \
-      nodejs \
-      npm \
       py3-pyldap \
       redis \
       runit \
@@ -92,15 +90,6 @@ RUN . /opt/graphite/bin/activate \
  && pip3 install -r requirements.txt \
  && python3 ./setup.py install
 
-# install statsd (as we have to use this ugly way)
-ARG statsd_version=0.8.5
-ARG statsd_repo=https://github.com/statsd/statsd.git
-WORKDIR /opt
-RUN git clone "${statsd_repo}" \
- && cd /opt/statsd \
- && git checkout tags/v"${statsd_version}" \
- && npm install
-
 COPY conf/opt/graphite/conf/                             /opt/defaultconf/graphite/
 COPY conf/opt/graphite/webapp/graphite/local_settings.py /opt/defaultconf/graphite/local_settings.py
 
@@ -111,13 +100,8 @@ WORKDIR /opt/graphite/webapp
 RUN mkdir -p /var/log/graphite/ \
   && PYTHONPATH=/opt/graphite/webapp /opt/graphite/bin/django-admin.py collectstatic --noinput --settings=graphite.settings
 
-# config statsd
-COPY conf/opt/statsd/config/ /opt/defaultconf/statsd/config/
-
 FROM base as production
 LABEL maintainer="Denys Zhdanov <denis.zhdanov@gmail.com>"
-
-ENV STATSD_INTERFACE udp
 
 COPY conf /
 
@@ -126,7 +110,7 @@ COPY --from=build /opt /opt
 
 # defaults
 EXPOSE 80 2003-2004 2013-2014 2023-2024 8080 8125 8125/udp 8126
-VOLUME ["/opt/graphite/conf", "/opt/graphite/storage", "/opt/graphite/webapp/graphite/functions/custom", "/etc/nginx", "/opt/statsd/config", "/etc/logrotate.d", "/var/log", "/var/lib/redis"]
+VOLUME ["/opt/graphite/conf", "/opt/graphite/storage", "/opt/graphite/webapp/graphite/functions/custom", "/etc/nginx", "/etc/logrotate.d", "/var/log", "/var/lib/redis"]
 
 STOPSIGNAL SIGHUP
 
