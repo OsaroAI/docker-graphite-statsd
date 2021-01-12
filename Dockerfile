@@ -1,55 +1,61 @@
-FROM alpine:3.10.3 as base
+ARG BOILERPLATE_PARENT_IMAGE="osaroai/boilerplate"
+ARG BOILERPLATE_PARENT_TAG="xenial-10.1-cudnn7-devel"
+
+FROM $BOILERPLATE_PARENT_IMAGE:$BOILERPLATE_PARENT_TAG AS python
+
 LABEL maintainer="Denys Zhdanov <denis.zhdanov@gmail.com>"
 
+RUN apt-get update
+
 RUN true \
- && apk add --no-cache \
-      cairo \
+ && apt-get install -y \
+      libcairo2-dev \
       collectd \
-      collectd-disk \
-      collectd-nginx \
+      collectd-utils \
       findutils \
-      librrd \
+      librrd-dev \
       logrotate \
       memcached \
       nginx \
-      py3-pyldap \
-      redis \
+      python-ldap \
+      redis-server \
       runit \
       sqlite \
       expect \
-      dcron \
-      py-mysqldb \
-      mysql-dev \
+      python-mysqldb \
+      libmysqlclient-dev \
       mysql-client \
-      postgresql-dev \
-      postgresql-client \
+      postgresql \
+      libpq-dev \
+      libsasl2-dev \
+      libldap2-dev \
+      libssl-dev \
  && rm -rf \
       /etc/nginx/conf.d/default.conf \
  && mkdir -p \
       /var/log/carbon \
       /var/log/graphite
 
-FROM base as build
+FROM python as build
 LABEL maintainer="Denys Zhdanov <denis.zhdanov@gmail.com>"
 
 RUN true \
- && apk add --update \
-      alpine-sdk \
+ && apt-get install -y \
       git \
       libffi-dev \
-      pkgconfig \
-      py3-cairo \
-      py3-pip \
-      py3-pyldap \
-      py3-virtualenv \
-      py-rrd \
-      py-mysqldb \
-      openldap-dev \
+      pkg-config \
+      python3-cairo \
+      python3-pip \
+      python-ldap \
+      python-rrdtool \
+      python-mysqldb \
       python3-dev \
-      rrdtool-dev \
+      rrdtool \
       wget \
- && virtualenv /opt/graphite \
+ && pip3 install virtualenv==16.7.10 \
+ && virtualenv -p python3 /opt/graphite \
  && . /opt/graphite/bin/activate \
+ && pip3 install pip==20.0.2 \
  && pip3 install \
       django==1.11.25 \
       django-statsd-mozilla \
@@ -60,7 +66,9 @@ RUN true \
       rrdtool \
       python-ldap \
       mysqlclient \
-      psycopg2
+      psycopg2 \
+      wheel \
+      setuptools
 
 ARG version=1.1.6
 
@@ -96,17 +104,22 @@ COPY conf/opt/graphite/webapp/graphite/local_settings.py /opt/defaultconf/graphi
 # config graphite
 COPY conf/opt/graphite/conf/*.conf /opt/graphite/conf/
 COPY conf/opt/graphite/webapp/graphite/local_settings.py /opt/graphite/webapp/graphite/local_settings.py
+
 WORKDIR /opt/graphite/webapp
 RUN mkdir -p /var/log/graphite/ \
   && PYTHONPATH=/opt/graphite/webapp /opt/graphite/bin/django-admin.py collectstatic --noinput --settings=graphite.settings
 
-FROM base as production
-LABEL maintainer="Denys Zhdanov <denis.zhdanov@gmail.com>"
+FROM python as production
 
 COPY conf /
 
 # copy /opt from build image
 COPY --from=build /opt /opt
+
+RUN set -x \
+# create nginx user/group first, to be consistent throughout docker variants
+    && addgroup --system nginx \
+    && adduser --system --disabled-login --ingroup nginx --no-create-home --home /nonexistent --gecos "nginx user" --shell /bin/false nginx
 
 # defaults
 EXPOSE 80 2003-2004 2013-2014 2023-2024 8080 8125 8125/udp 8126
